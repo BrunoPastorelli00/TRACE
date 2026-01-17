@@ -41,8 +41,14 @@ program
       }
 
       console.log(`Verifying provenance for: ${videoFile}`);
-      console.log(`Manifest: ${manifestPath}`);
-      console.log(`Signature: ${signaturePath}`);
+      
+      // Note: verifyManifest will try embedded metadata first, then fallback to sidecar files
+      if (options.manifest && options.signature) {
+        console.log(`Manifest: ${manifestPath}`);
+        console.log(`Signature: ${signaturePath}`);
+      } else {
+        console.log('Checking embedded metadata first, then sidecar files...');
+      }
       console.log('');
 
       // Verify manifest

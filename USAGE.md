@@ -101,6 +101,7 @@ trace-stamp <video-file> [options]
 | `-k, --key <path>` | Path to private key file (generates new key if not provided) | `--key ./keys/private.pem` |
 | `--provider-key <path>` | Path to provider public key file (extracted from private key if not provided) | `--provider-key ./keys/public.pem` |
 | `--input-hash <hash>` | Input hash for transformation operations (must be in `sha256:...` format) | `--input-hash "sha256:abc123..."` |
+| `--embed` | Embed manifest and signature in video container metadata (optional, sidecar files are always created) | `--embed` |
 
 #### Operation Types
 
@@ -144,6 +145,23 @@ npm run stamp -- video.mp4 \
   --key ./production-key.pem
 ```
 
+**Embedding metadata in video container (optional):**
+
+```bash
+npm run stamp -- video.mp4 \
+  --operation ai_generated \
+  --provider-id "example-provider" \
+  --provider-name "Example AI Provider" \
+  --model-id "video-model-v1" \
+  --model-version "1.0.0" \
+  --embed
+```
+
+This will:
+1. Create sidecar files (`.prov.json` and `.prov.sig`) - **always done**
+2. Embed the manifest and signature in the video container metadata - **optional**
+3. Verification will prefer embedded metadata, falling back to sidecar files if not found
+
 **Obtaining input hash for transformations:**
 
 If you're transforming an existing video, first compute its hash:
@@ -159,19 +177,23 @@ The `trace-verify` command verifies the provenance of a video file.
 
 #### How Verification Works
 
-**Important**: Currently, TRACE verification reads provenance data from **sidecar files** (`.prov.json` and `.prov.sig`), not from embedded video metadata. The verification process:
+TRACE verification supports reading provenance data from **two sources** (in priority order):
 
-1. **Reads manifest and signature** from sidecar files (not from the video file itself)
-2. **Verifies the cryptographic signature** of the manifest
-3. **Computes the hash** of the video file
-4. **Compares the computed hash** with the hash stored in the manifest
-5. **Returns a verification result** (VALID, INVALID, or INCONCLUSIVE)
+1. **Embedded metadata** in the video container (if available)
+2. **Sidecar files** (`.prov.json` and `.prov.sig`) - fallback
 
-The video file itself is only used to:
-- Verify its integrity (by comparing hashes)
-- Not to extract embedded provenance metadata (this feature is not yet implemented)
+The verification process:
 
-> **Note**: The TRACE specification mentions that embedding manifests in container metadata (MP4/WebM) is optional, but this feature is not implemented in the current MVP. For v0.1, sidecar files are the canonical attachment mechanism.
+1. **First tries to extract** manifest and signature from embedded video metadata
+2. **Falls back to sidecar files** if embedded metadata is not found
+3. **Verifies the cryptographic signature** of the manifest
+4. **Computes the hash** of the video file
+5. **Compares the computed hash** with the hash stored in the manifest
+6. **Returns a verification result** (VALID, INVALID, or INCONCLUSIVE)
+
+The verification message will indicate the source: `"Provenance verified successfully (from embedded metadata)"` or `"Provenance verified successfully (from sidecar files)"`.
+
+> **Note**: Sidecar files are always created during stamping (mandatory for v0.1). Embedding in container metadata is optional and can be enabled with the `--embed` flag.
 
 #### Basic Syntax
 
@@ -194,15 +216,17 @@ trace-verify <video-file> [options]
 
 #### Examples
 
-**Basic verification (auto-detects sidecar files):**
+**Basic verification (tries embedded metadata first, then sidecar files):**
 
 ```bash
 npm run verify -- video.mp4
 ```
 
-This automatically looks for:
-- `video.prov.json` (manifest)
-- `video.prov.sig` (signature)
+This automatically:
+1. **Tries to extract** manifest and signature from embedded video metadata
+2. **Falls back to** sidecar files if embedded metadata is not found:
+   - `video.prov.json` (manifest)
+   - `video.prov.sig` (signature)
 
 **Verification with explicit paths:**
 
@@ -624,14 +648,18 @@ video.prov.sig         # Cryptographic signature (base64) - stored separately
 
 ### Metadata Storage
 
-**Current Implementation (v0.1):**
-- Provenance data is stored in **sidecar files** (mandatory for MVP)
-- The video file itself is **not modified** - no metadata is embedded in the container
-- Verification reads from sidecar files, not from the video file
+**Implementation (v0.1):**
 
-**Future (Optional):**
-- The TRACE spec allows for embedding manifests in container metadata (MP4/WebM), but this is **not yet implemented**
-- Embedded metadata would survive file renaming but can be removed by re-encoding
+**Sidecar Files (Mandatory):**
+- Provenance data is **always stored** in sidecar files (`.prov.json` and `.prov.sig`)
+- These files are mandatory for v0.1 compliance
+- They are created in the same directory as the video file
+
+**Embedded Metadata (Optional):**
+- Provenance can be **optionally embedded** in video container metadata using the `--embed` flag
+- Supported formats: MP4 (UUID box) and WebM (custom tag)
+- Embedded metadata survives file renaming but **can be removed by re-encoding**
+- Verification tries embedded metadata first, then falls back to sidecar files
 
 **Why Sidecar Files?**
 - Sidecar files are the **canonical attachment mechanism** for TRACE v0.1
@@ -684,19 +712,19 @@ The `*.prov.sig` file contains the base64-encoded Ed25519 signature of the canon
 
 #### 1. "Manifest file not found" or "Signature file not found" (INCONCLUSIVE)
 
-**Problem**: The sidecar files (`.prov.json` and `.prov.sig`) are missing.
+**Problem**: Neither embedded metadata nor sidecar files were found.
 
 **Possible causes**:
 - The video was never stamped
 - The sidecar files were deleted or not transferred with the video
 - The video file was moved without the sidecar files
+- Embedded metadata was removed (e.g., by re-encoding)
 
 **Solution**: 
 - Ensure the video was stamped first: `npm run stamp -- video.mp4 ...`
 - Check that sidecar files exist in the same directory as the video
 - If files were moved, ensure all three files (video, manifest, signature) were moved together
-
-**Note**: TRACE currently reads from sidecar files only - it does not read embedded metadata from the video file itself.
+- If you used `--embed`, the metadata might have been removed during re-encoding - use sidecar files instead
 
 #### 2. "Video file not found"
 

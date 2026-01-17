@@ -9,6 +9,7 @@ import { createHash, sign, verify, generateKeyPairSync, createPublicKey, KeyObje
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { join, dirname, basename } from 'path';
 import { randomBytes } from 'crypto';
+import { extractMetadata } from './metadata-embed.js';
 
 export type Operation = 'ai_generated' | 'ai_transformed';
 export type VerificationResult = 'VALID' | 'INVALID' | 'INCONCLUSIVE';
@@ -108,7 +109,7 @@ function generateNonce(): string {
 /**
  * Canonical JSON serialization with lexicographically ordered keys
  */
-function canonicalJSON(obj: any): string {
+export function canonicalJSON(obj: any): string {
   // Sort keys recursively
   function sortKeys(o: any): any {
     if (o === null || typeof o !== 'object') {
@@ -200,27 +201,16 @@ function signManifest(manifestJson: string, privateKey: string): string {
 
 /**
  * Verify a provenance manifest
+ * 
+ * Supports reading from:
+ * 1. Embedded metadata in video container (if available)
+ * 2. Sidecar files (fallback)
  */
 export function verifyManifest(
   videoPath: string,
-  manifestPath: string,
-  signaturePath: string
+  manifestPath?: string,
+  signaturePath?: string
 ): { result: VerificationResult; message: string } {
-  // Check if files exist
-  if (!existsSync(manifestPath)) {
-    return {
-      result: 'INCONCLUSIVE',
-      message: 'Manifest file not found'
-    };
-  }
-  
-  if (!existsSync(signaturePath)) {
-    return {
-      result: 'INCONCLUSIVE',
-      message: 'Signature file not found'
-    };
-  }
-  
   if (!existsSync(videoPath)) {
     return {
       result: 'INCONCLUSIVE',
@@ -228,11 +218,58 @@ export function verifyManifest(
     };
   }
   
+  let manifestJson: string;
+  let manifest: ProvenanceManifest;
+  let signature: string;
+  let source: string;
+  
+  // Try to read from embedded metadata first
   try {
-    // Read manifest and signature
-    const manifestJson = readFileSync(manifestPath, 'utf-8');
-    const manifest: ProvenanceManifest = JSON.parse(manifestJson);
-    const signature = readFileSync(signaturePath, 'utf-8');
+    const embedded = extractMetadata(videoPath);
+    
+    if (embedded) {
+      manifestJson = embedded.manifest;
+      manifest = JSON.parse(manifestJson);
+      signature = embedded.signature;
+      source = 'embedded metadata';
+    } else {
+      throw new Error('No embedded metadata found');
+    }
+  } catch (error) {
+    // If embedded metadata extraction fails, fallback to sidecar files
+    // Fallback to sidecar files
+    const sidecarPaths = manifestPath && signaturePath 
+      ? { manifestPath, signaturePath }
+      : getSidecarPaths(videoPath);
+    
+    if (!existsSync(sidecarPaths.manifestPath)) {
+      return {
+        result: 'INCONCLUSIVE',
+        message: 'Manifest file not found (neither embedded nor sidecar)'
+      };
+    }
+    
+    if (!existsSync(sidecarPaths.signaturePath)) {
+      return {
+        result: 'INCONCLUSIVE',
+        message: 'Signature file not found (neither embedded nor sidecar)'
+      };
+    }
+    
+    try {
+      manifestJson = readFileSync(sidecarPaths.manifestPath, 'utf-8');
+      manifest = JSON.parse(manifestJson);
+      signature = readFileSync(sidecarPaths.signaturePath, 'utf-8');
+      source = 'sidecar files';
+    } catch (error) {
+      return {
+        result: 'INCONCLUSIVE',
+        message: `Error reading sidecar files: ${error instanceof Error ? error.message : 'Unknown error'}`
+      };
+    }
+  }
+  
+  try {
     
     // Verify signature using canonical JSON
     const canonicalJson = canonicalJSON(manifest);
@@ -263,7 +300,7 @@ export function verifyManifest(
     
     return {
       result: 'VALID',
-      message: 'Provenance verified successfully'
+      message: `Provenance verified successfully (from ${source})`
     };
   } catch (error) {
     return {
@@ -306,3 +343,6 @@ export function saveSidecarFiles(
   writeFileSync(manifestPath, canonicalJson, 'utf-8');
   writeFileSync(signaturePath, signature, 'utf-8');
 }
+
+// Export metadata embedding functions
+export { embedMetadata, extractMetadata, embedMetadataMP4, extractMetadataMP4, embedMetadataWebM, extractMetadataWebM, getMediaType, type EmbeddedMetadata } from './metadata-embed.js';

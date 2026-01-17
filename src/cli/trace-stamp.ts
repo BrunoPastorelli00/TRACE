@@ -16,6 +16,8 @@ import {
   saveSidecarFiles,
   generateKeyPair,
   getSidecarPaths,
+  embedMetadata,
+  canonicalJSON,
   Operation,
   Provider,
   Model
@@ -36,6 +38,7 @@ program
   .option('-k, --key <path>', 'Path to private key file (generates new key if not provided)')
   .option('--provider-key <path>', 'Path to provider public key file (extracted from private key if not provided)')
   .option('--input-hash <hash>', 'Input hash for transformation operations (sha256:... format)')
+  .option('--embed', 'Embed manifest and signature in video container metadata (optional, sidecar files are always created)')
   .action(async (videoFile: string, options) => {
     try {
       // Validate video file exists
@@ -134,8 +137,20 @@ program
         inputHash
       );
 
-      // Save sidecar files
+      // Save sidecar files (always done - mandatory for v0.1)
       saveSidecarFiles(videoFile, manifest, signature);
+
+      // Optionally embed metadata in video container
+      if (options.embed) {
+        try {
+          const manifestJson = canonicalJSON(manifest);
+          embedMetadata(videoFile, manifestJson, signature);
+          console.log('✓ Provenance metadata embedded in video container');
+        } catch (embedError) {
+          console.warn(`Warning: Failed to embed metadata in container: ${embedError instanceof Error ? embedError.message : 'Unknown error'}`);
+          console.warn('  Sidecar files were created successfully, but embedding failed');
+        }
+      }
 
       console.log('✓ Provenance manifest created successfully');
       const { manifestPath, signaturePath } = getSidecarPaths(videoFile);
