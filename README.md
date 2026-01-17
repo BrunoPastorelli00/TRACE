@@ -201,17 +201,33 @@ npm run build
 
 ## Usage
 
-### Stamping a video
+For detailed usage instructions, see [USAGE.md](USAGE.md).
+
+### Quick Start
+
+**Stamping a video:**
 
 ```bash
-npm run stamp -- <video-file>
+npm run stamp -- <video-file> \
+  --operation ai_generated \
+  --provider-id "example-provider" \
+  --provider-name "Example Provider" \
+  --model-id "model-id" \
+  --model-version "1.0.0"
 ```
 
-### Verifying a video
+**Verifying a video:**
 
 ```bash
 npm run verify -- <video-file>
 ```
+
+See [USAGE.md](USAGE.md) for comprehensive documentation including:
+- Complete CLI reference with all options
+- Programmatic API usage examples
+- Key management best practices
+- Common workflows and use cases
+- Troubleshooting guide
 
 ---
 
