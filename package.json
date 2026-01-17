@@ -1,0 +1,35 @@
+{
+  "name": "trace",
+  "version": "0.1.0",
+  "description": "An open, minimal, and verifiable provenance layer for AI-generated and AI-transformed content",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "trace-stamp": "./dist/cli/trace-stamp.js",
+    "trace-verify": "./dist/cli/trace-verify.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "stamp": "node dist/cli/trace-stamp.js",
+    "verify": "node dist/cli/trace-verify.js",
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js"
+  },
+  "keywords": [
+    "provenance",
+    "c2pa",
+    "ai",
+    "verification",
+    "content-authenticity"
+  ],
+  "author": "",
+  "license": "Apache-2.0",
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "commander": "^11.1.0"
+  }
+}
+
